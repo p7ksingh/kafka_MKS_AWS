@@ -1,0 +1,113 @@
+Step # To install Java 17 in Amazon EC2, you can use the following commands:
+
+Install OpenJDK 17: sudo yum install openjdk-17
+Install Amazon Corretto 17: sudo yum install java-17-amazon-corretto-headless for headless, sudo yum install java-17-amazon-corretto for headful, sudo yum install java-17-amazon-corretto-devel for the JDK, or sudo yum install java-17-amazon-corretto-jmods for JMods
+Install Amazon Corretto 17 on Debian-based Linux: sudo apt-get update && sudo apt-get install java-common, then download the Linux .deb file from the Downloads page and install it with sudo dpkg --install
+
+Step # Install Kafka
+goto https://kafka.apache.org/downloads
+wget https://downloads.apache.org/kafka/3.6.2/kafka_2.12-3.6.2.tgz
+
+Step # for Extract kafka tar file use -> 
+tar xfvz kafka_2.12-3.6.2.tgz
+
+Step# To connect to MKS cluster we need to change certain configuration
+Go to kafka unzip file ->config->create file "touch client.properties"
+
+Step# nano client.properties -> here we will add  msk IAM so we can access MSK by using IAM.
+goto https://docs.aws.amazon.com/msk/latest/developerguide/iam-access-control.html
+copy
+
+security.protocol=SASL_SSL
+sasl.mechanism=AWS_MSK_IAM
+sasl.jaas.config=software.amazon.msk.auth.iam.IAMLoginModule required;
+sasl.client.callback.handler.class=software.amazon.msk.auth.iam.IAMClientCallbackHandler
+
+and past into client.properties
+
+Step#these are by difult no available in our system ie IAMLoginModule and IAMClientCallbackHandler
+So we need to explicitly downlode frome jar file present here
+
+goto https://github.com/aws/aws-msk-iam-auth/releases
+wget https://github.com/aws/aws-msk-iam-auth/releases/download/v2.1.0/aws-msk-iam-auth-2.1.0-all.jar
+
+Step#now set path of aws-msk-iam-auth-2.1.0-all.jar for temporary use below command
+export CLASSPATH=/home/ec2-user/aws-msk-iam-auth-2.1.0-all.jar 
+
+Step# Set path of aws-msk-iam-auth-2.1.0-all.jar for permanent set path
+[ec2-user@ip-172-31-36-102 ~]$ echo $PATH
+/home/ec2-user/.local/bin:/home/ec2-user/bin:/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin
+[ec2-user@ip-172-31-36-102 ~]$ ls
+aws-msk-iam-auth-2.1.0-all.jar  kafka_2.12-3.6.2  kafka_2.12-3.6.2.tgz
+[ec2-user@ip-172-31-36-102 ~]$ echo $0
+-bash
+[ec2-user@ip-172-31-36-102 ~]$ nano ~/.bashrc
+export CLASSPATH=/home/ec2-user/aws-msk-iam-auth-2.1.0-all.jar
+[ec2-user@ip-172-31-36-102 ~]$ source ~/.bashrc
+[ec2-user@ip-172-31-36-102 ~]$ echo $PATH
+/home/ec2-user/.local/bin:/home/ec2-user/bin:/usr/local/bin:/usr/bin:/usr/local/sbin:/usr/sbin
+[ec2-user@ip-172-31-36-102 ~]$ echo $CLASSPATH
+/home/ec2-user/aws-msk-iam-auth-2.1.0-all.jar
+
+
+Step# for connect Kafka MSK we need to create IAM policy and attached with EC2
+goto https://docs.aws.amazon.com/msk/latest/developerguide/iam-access-control.html
+and copy
+===
+{
+    "Version": "2012-10-17",
+    "Statement": [
+        {
+            "Effect": "Allow",
+            "Action": [
+                "kafka-cluster:Connect",
+                "kafka-cluster:AlterCluster",
+                "kafka-cluster:DescribeCluster"
+            ],
+            "Resource": [
+                "arn:aws:kafka:us-east-1:0123456789012:cluster/MyTestCluster/abcd1234-0123-abcd-5678-1234abcd-1"
+            ]
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "kafka-cluster:*Topic*",
+                "kafka-cluster:WriteData",
+                "kafka-cluster:ReadData"
+            ],
+            "Resource": [
+                "arn:aws:kafka:us-east-1:0123456789012:topic/MyTestCluster/*"
+            ]
+        },
+        {
+            "Effect": "Allow",
+            "Action": [
+                "kafka-cluster:AlterGroup",
+                "kafka-cluster:DescribeGroup"
+            ],
+            "Resource": [
+                "arn:aws:kafka:us-east-1:0123456789012:group/MyTestCluster/*"
+            ]
+        }
+    ]
+} 
+
+===== 
+and go to IAM->policy -> create policy ->JSON->Past here->and do some modification
+Note:- here i am going to remove resources and add "*" but when we use MSK we need mentation of MSK arn.
+
+#Step:create Role and connect policy and attached to EC2
+
+#Step: create kafka topic
+
+bin/kafka-topics.sh --create --topic test-topic --command-config config/client.properties --bootstrap-server b-2.mksclusterpks.ushu3n.c2.kafka.ap-south-1.amazonaws.com:9094
+
+
+[ec2-user@ip-172-31-82-190 ~]$ /home/ec2-user/kafka_2.12-3.5.1/bin/kafka-topics.sh --create --bootstrap-server b-3.msk101.mtbg1e.c24.kafka.us-east-1.amazonaws.com:9092,b-1.msk101.mtbg1e.c24.kafka.us-east-1.amazonaws.com:9092,b-2.msk101.mtbg1e.c24.kafka.us-east-1.amazonaws.com:9092 --replication-factor 3 --partitions 5 --topic test-topic
+
+
+#Step: run producer
+bin/kafka-console-producer.sh --topic Topic-Name-Here --producer-config config/client.properties --bootstrap-server b-1.mskkafkacluster.exrkpk.c2.kafka.ap-south-1.amazonaws.com:9098
+
+#Step: run consumer
+bin/kafka-console-consumer.sh --topic Topic-Name-Here --from-beginning --consumer-config config/client.properties --bootstrap-server b-1.mskkafkacluster.exrkpk.c2.kafka.ap-south-1.amazonaws.com:9098 
